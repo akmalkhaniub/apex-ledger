@@ -1,0 +1,93 @@
+asyncapi: 3.0.0
+info:
+  title: ApexLedger Transactional Outbox Events
+  version: 1.0.0
+  description: |
+    Asynchronous domain events emitted by ApexLedger via the Transactional Outbox pattern.
+    Guarantees at-least-once delivery to downstream banking integrations and notification queues.
+
+channels:
+  ledger.account.created:
+    address: ledger.account.created
+    messages:
+      AccountCreatedEvent:
+        $ref: '#/components/messages/AccountCreatedEvent'
+
+  ledger.transfer.posted:
+    address: ledger.transfer.posted
+    messages:
+      TransferPostedEvent:
+        $ref: '#/components/messages/TransferPostedEvent'
+
+  ledger.transfer.failed:
+    address: ledger.transfer.failed
+    messages:
+      TransferFailedEvent:
+        $ref: '#/components/messages/TransferFailedEvent'
+
+components:
+  messages:
+    AccountCreatedEvent:
+      payload:
+        type: object
+        required: [event_id, event_type, account_id, currency, timestamp]
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: ledger.account.created
+          account_id:
+            type: string
+            format: uuid
+          currency:
+            type: string
+          timestamp:
+            type: string
+            format: date-time
+
+    TransferPostedEvent:
+      payload:
+        type: object
+        required: [event_id, event_type, transfer_id, currency, total_amount, rail, timestamp]
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: ledger.transfer.posted
+          transfer_id:
+            type: string
+            format: uuid
+          currency:
+            type: string
+          total_amount:
+            type: integer
+            format: int64
+          rail:
+            type: string
+          timestamp:
+            type: string
+            format: date-time
+
+    TransferFailedEvent:
+      payload:
+        type: object
+        required: [event_id, event_type, transfer_id, failure_reason, timestamp]
+        properties:
+          event_id:
+            type: string
+            format: uuid
+          event_type:
+            type: string
+            const: ledger.transfer.failed
+          transfer_id:
+            type: string
+            format: uuid
+          failure_reason:
+            type: string
+          timestamp:
+            type: string
+            format: date-time

@@ -1,0 +1,520 @@
+openapi: 3.1.0
+info:
+  title: ApexLedger Core Banking API
+  version: 1.0.0
+  description: |
+    Production-grade Core Banking Ledger and Money Movement Engine.
+    Enforces strict double-entry accounting invariants (sum of debits equals sum of credits),
+    currency consistency, and IETF Idempotency-Key guarantees for financial operations.
+servers:
+  - url: http://localhost:8080
+    description: Local Development Server
+
+paths:
+  /v1/accounts:
+    post:
+      summary: Create a financial account
+      operationId: createAccount
+      tags:
+        - Accounts
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+      responses:
+        '201':
+          description: Account created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '400':
+          $ref: '#/components/responses/ProblemDetails'
+        '409':
+          $ref: '#/components/responses/ProblemDetails'
+        '500':
+          $ref: '#/components/responses/ProblemDetails'
+
+    get:
+      summary: List financial accounts
+      operationId: listAccounts
+      tags:
+        - Accounts
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountList'
+        '500':
+          $ref: '#/components/responses/ProblemDetails'
+
+  /v1/accounts/{accountId}:
+    get:
+      summary: Retrieve an account by ID
+      operationId: getAccount
+      tags:
+        - Accounts
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Account details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        '404':
+          $ref: '#/components/responses/ProblemDetails'
+        '500':
+          $ref: '#/components/responses/ProblemDetails'
+
+  /v1/accounts/{accountId}/balance:
+    get:
+      summary: Retrieve real-time computed account balance
+      operationId: getAccountBalance
+      tags:
+        - Accounts
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Real-time balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountBalance'
+        '404':
+          $ref: '#/components/responses/ProblemDetails'
+        '500':
+          $ref: '#/components/responses/ProblemDetails'
+
+  /v1/transfers:
+    post:
+      summary: Execute an atomic double-entry money transfer
+      operationId: createTransfer
+      description: |
+        Atomically records a multi-line balanced transfer.
+        Requires an IETF `Idempotency-Key` header.
+        Strict invariant: The sum of all DEBIT entries must equal the sum of all CREDIT entries.
+      tags:
+        - Transfers
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransferRequest'
+      responses:
+        '201':
+          description: Transfer executed and posted to ledger
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          $ref: '#/components/responses/ProblemDetails'
+        '409':
+          $ref: '#/components/responses/ProblemDetails'
+        '422':
+          $ref: '#/components/responses/ProblemDetails'
+        '500':
+          $ref: '#/components/responses/ProblemDetails'
+
+    get:
+      summary: List transfers
+      operationId: listTransfers
+      tags:
+        - Transfers
+      parameters:
+        - name: accountId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        '200':
+          description: List of transfers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferList'
+        '500':
+          $ref: '#/components/responses/ProblemDetails'
+
+  /v1/transfers/{transferId}:
+    get:
+      summary: Retrieve transfer details
+      operationId: getTransfer
+      tags:
+        - Transfers
+      parameters:
+        - name: transferId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transfer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '404':
+          $ref: '#/components/responses/ProblemDetails'
+        '500':
+          $ref: '#/components/responses/ProblemDetails'
+
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique UUIDv4 token guaranteeing exactly-once execution of mutating requests.
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    ProblemDetails:
+      description: Standard RFC 7807 Error Response
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+
+  schemas:
+    AccountType:
+      type: string
+      enum:
+        - ASSET
+        - LIABILITY
+        - EQUITY
+        - REVENUE
+        - EXPENSE
+      description: Standard Chart of Accounts categorization.
+
+    NormalBalance:
+      type: string
+      enum:
+        - DEBIT
+        - CREDIT
+      description: Standard normal balance direction (Assets/Expenses are DEBIT; Liabilities/Equity/Revenue are CREDIT).
+
+    Currency:
+      type: string
+      pattern: '^[A-Z]{3}$'
+      example: USD
+      description: ISO 4217 three-letter currency code.
+
+    Account:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - normal_balance
+        - currency
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Operating Treasury Account
+        type:
+          $ref: '#/components/schemas/AccountType'
+        normal_balance:
+          $ref: '#/components/schemas/NormalBalance'
+        currency:
+          $ref: '#/components/schemas/Currency'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateAccountRequest:
+      type: object
+      required:
+        - name
+        - type
+        - currency
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+          example: Customer USD Wallet
+        type:
+          $ref: '#/components/schemas/AccountType'
+        currency:
+          $ref: '#/components/schemas/Currency'
+        metadata:
+          type: object
+          additionalProperties: true
+
+    AccountList:
+      type: object
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+        total:
+          type: integer
+        next_cursor:
+          type: string
+
+    AccountBalance:
+      type: object
+      required:
+        - account_id
+        - currency
+        - posted_balance
+        - pending_balance
+        - available_balance
+        - updated_at
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        currency:
+          $ref: '#/components/schemas/Currency'
+        posted_balance:
+          type: integer
+          format: int64
+          description: Net cleared balance in minor units (e.g. cents).
+          example: 150000
+        pending_balance:
+          type: integer
+          format: int64
+          description: Pending balance in minor units.
+          example: 0
+        available_balance:
+          type: integer
+          format: int64
+          description: Cleared balance minus reserved authorizations.
+          example: 150000
+        updated_at:
+          type: string
+          format: date-time
+
+    EntryDirection:
+      type: string
+      enum:
+        - DEBIT
+        - CREDIT
+
+    TransferStatus:
+      type: string
+      enum:
+        - PENDING
+        - POSTED
+        - FAILED
+        - REVERSED
+
+    JournalEntryInput:
+      type: object
+      required:
+        - account_id
+        - direction
+        - amount
+      properties:
+        account_id:
+          type: string
+          format: uuid
+        direction:
+          $ref: '#/components/schemas/EntryDirection'
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Positive amount in minor currency units (cents).
+          example: 5000
+
+    JournalEntry:
+      type: object
+      required:
+        - id
+        - transfer_id
+        - account_id
+        - direction
+        - amount
+        - currency
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        transfer_id:
+          type: string
+          format: uuid
+        account_id:
+          type: string
+          format: uuid
+        direction:
+          $ref: '#/components/schemas/EntryDirection'
+        amount:
+          type: integer
+          format: int64
+        currency:
+          $ref: '#/components/schemas/Currency'
+        created_at:
+          type: string
+          format: date-time
+
+    CreateTransferRequest:
+      type: object
+      required:
+        - description
+        - currency
+        - entries
+      properties:
+        description:
+          type: string
+          minLength: 3
+          maxLength: 255
+          example: Customer Withdrawal via ACH
+        reference:
+          type: string
+          example: ext_tx_948274
+        currency:
+          $ref: '#/components/schemas/Currency'
+        rail:
+          type: string
+          enum: [INTERNAL, ACH, WIRE, SWIFT, SEPA]
+          default: INTERNAL
+        entries:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/JournalEntryInput'
+
+    Transfer:
+      type: object
+      required:
+        - id
+        - description
+        - currency
+        - status
+        - entries
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        reference:
+          type: string
+        currency:
+          $ref: '#/components/schemas/Currency'
+        status:
+          $ref: '#/components/schemas/TransferStatus'
+        rail:
+          type: string
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/JournalEntry'
+        created_at:
+          type: string
+          format: date-time
+        posted_at:
+          type: string
+          format: date-time
+
+    TransferList:
+      type: object
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transfer'
+        total:
+          type: integer
+
+    ProblemDetails:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - code
+        - detail
+      properties:
+        type:
+          type: string
+          format: uri
+          example: https://api.apexledger.io/errors/unbalanced-transfer
+        title:
+          type: string
+          example: Unbalanced Transfer
+        status:
+          type: integer
+          example: 422
+        code:
+          type: string
+          example: UNBALANCED_TRANSFER
+        detail:
+          type: string
+          example: The sum of DEBIT entries (10000) does not equal the sum of CREDIT entries (8000).
+        invalid_params:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              reason:
+                type: string
