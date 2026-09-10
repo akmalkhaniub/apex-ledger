@@ -1,0 +1,14 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "db/migrations/000001_init_ledger.up.sql"
+    queries: "db/queries/ledger.sql"
+    gen:
+      go:
+        package: "db"
+        out: "internal/generated/db"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_prepared_queries: false
+        emit_interface: true
+        emit_exact_table_names: false
